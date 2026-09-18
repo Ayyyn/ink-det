@@ -1,0 +1,27 @@
+# --- large external checkouts and binaries (never commit) ---
+villa/
+tools/
+*.zip
+*.exe
+
+# --- python envs ---
+.venv*/
+__pycache__/
+*.pyc
+
+# --- streamed / derived data: regenerable, and some of it is multi-GB ---
+cache/
+renders/
+*.zarr/
+*.tif
+*.tiff
+
+# --- PRIZE RULE: First Letters submissions must not be made public before the
+# prize is announced ("you must not make your discovery public until the prize is
+# officially announced"). Anything that could constitute a discovery -- ink
+# predictions, candidate letter images, submission drafts -- lives here and is
+# never committed. Recon tooling is public; findings are not.
+private/
+out/
+ink/
+submissions/

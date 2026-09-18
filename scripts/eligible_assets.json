@@ -1,0 +1,249 @@
+[
+  {
+    "scroll": "PHerc0125",
+    "volume": "20250821151825",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0191",
+    "volume": "20250821151635",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0211",
+    "volume": "20250821151803",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0257",
+    "volume": "20250821151750",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0268",
+    "volume": "20251110183117",
+    "px": 8.64,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 1.4,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0358",
+    "volume": "20250821151737",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0800",
+    "volume": "20250521135224",
+    "px": 8.64,
+    "segments": 6,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 1.4,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0813",
+    "volume": "20250821151723",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc0826",
+    "volume": "20250821151701",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc1203",
+    "volume": "20250820131727",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 7.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc1218",
+    "volume": "20250521120456",
+    "px": 8.64,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 1.4,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc1447",
+    "volume": "20250521151220",
+    "px": 8.64,
+    "segments": 15,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 1.4,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  },
+  {
+    "scroll": "PHerc1545",
+    "volume": "20250821151648",
+    "px": 9.362,
+    "segments": 0,
+    "surface": true,
+    "lasagna": true,
+    "ink3d": false,
+    "score": 0.6,
+    "stages": {
+      "scanned": true,
+      "segmented": false,
+      "unrolled": false,
+      "ink": false,
+      "text": false,
+      "furthest": 0,
+      "unrolledPct": 0
+    }
+  }
+]
