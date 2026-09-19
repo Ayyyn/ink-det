@@ -47,6 +47,28 @@ def open_level(zarr_uri: str, level: int):
     return zarr.open(s3fs.S3Map(root=root, s3=fs, check=False), mode="r")[str(level)]
 
 
+def despeckle(mask2d: np.ndarray, min_px: int) -> np.ndarray:
+    """Drop connected components too small to be a real sheet cross-section.
+
+    The published surface predictions are thresholded (th0.2) binaries, so they carry
+    isolated specks. A ray crossing a speck registers as a wrap crossing, which adds a
+    spurious short gap and inflates the pitch CV -- the exact quantity the regularity
+    term is trying to measure. In an xy cross-section of a scroll, sheets run as long
+    arcs (hundreds of pixels), so a size filter separates them from noise cleanly.
+    """
+    from scipy import ndimage
+
+    if min_px <= 1:
+        return mask2d
+    lab, n = ndimage.label(mask2d)
+    if n == 0:
+        return mask2d
+    sizes = np.bincount(lab.ravel())
+    sizes[0] = 0
+    keep = sizes >= min_px
+    return keep[lab]
+
+
 def ray_metrics(mask2d: np.ndarray, cy: float, cx: float, angles: np.ndarray,
                 radii_vox: np.ndarray) -> dict[str, np.ndarray]:
     """Cast rays from (cy, cx) and measure wrap structure along each.
@@ -133,7 +155,7 @@ def ray_metrics(mask2d: np.ndarray, cy: float, cx: float, angles: np.ndarray,
 
 def score_scroll(scroll: str, surf_uri: str, px_um: float, level: int,
                  n_angles: int, z_step_mm: float, band_mm: float,
-                 r_min_mm: float) -> tuple[list[dict], dict]:
+                 r_min_mm: float, min_component_px: int) -> tuple[list[dict], dict]:
     a = open_level(surf_uri, level)
     nz, ny, nx = a.shape
     ds = 2 ** level
@@ -165,6 +187,9 @@ def score_scroll(scroll: str, surf_uri: str, px_um: float, level: int,
             m = slab[zl]
             if m.sum() < 50:
                 continue
+            m = despeckle(m, min_component_px)
+            if m.sum() < 50:
+                continue
             ys, xs = np.nonzero(m)
             cy, cx = ys.mean(), xs.mean()  # per-slice centroid tracks axis wobble
             for b0 in band_edges:
@@ -184,6 +209,7 @@ def score_scroll(scroll: str, surf_uri: str, px_um: float, level: int,
 
     meta = {
         "scroll": scroll, "level": level, "vox_um": vox_um,
+        "min_component_px": min_component_px,
         "n_angles": n_angles, "band_vox": band_vox, "z_step_vox": z_step,
         "shape": list(a.shape), "downsample": ds, "px_um": px_um,
     }
@@ -250,13 +276,28 @@ def aggregate_windows(recs: list[dict], meta: dict) -> list[dict]:
                 # --- composite, each term in [0, 1], higher is better ---
                 # regular pitch: CV of 0 is perfect, 1.0 is noise
                 regularity = float(np.clip(1.0 - cv, 0.0, 1.0))
-                # thin sheets: a wrap should be ~1-3 voxels at this level, not a blob
-                thinness = float(np.clip(1.0 - (sh - 2.0) / 6.0, 0.0, 1.0))
+
+                # A sheet cross-section should be about one sheet thick. At ~69 um/vox
+                # a 100-200 um sheet is 1.5-3 vox. Below ~1 vox the prediction is
+                # breaking up; much above ~4 vox adjacent wraps have merged into a
+                # blob, which is precisely the compressed-region failure. Penalise
+                # both sides instead of only the thick one (the old one-sided form
+                # saturated at 1.0 everywhere and carried no information).
+                sheet_ideal, sheet_tol = 2.2, 2.0
+                sheet_ok = float(np.clip(1.0 - abs(sh - sheet_ideal) / sheet_tol, 0.0, 1.0))
+
                 # no hollow stretch: worst gap shouldn't dwarf the typical pitch
                 solidity = float(np.clip(1.0 - (gx / max(gm, 1e-6) - 1.0) / 4.0, 0.0, 1.0))
-                # enough wraps crossed to be a real layered region
-                layered = float(np.clip(nc / 8.0, 0.0, 1.0))
-                score = regularity * thinness * solidity * layered
+
+                # Completeness: how many wraps we actually crossed versus how many the
+                # locally measured pitch says should be in this band. Scoring against
+                # the measured pitch rather than a fixed count is what makes this
+                # informative -- a shortfall means wraps are missing from the
+                # prediction (holes), not that the scroll is loosely wound.
+                expected = (b1 - b0) / max(gm, 1e-6)
+                completeness = float(np.clip(nc / max(expected, 1e-6), 0.0, 1.0))
+
+                score = regularity * sheet_ok * solidity * completeness
 
                 z_c = int(zs[zi] + (zs[min(zi + z_rows - 1, n_z - 1)] - zs[zi]) / 2)
                 th_c = float(((ai + n_ang_win / 2) % n_ang) / n_ang * 2 * np.pi)
@@ -268,9 +309,10 @@ def aggregate_windows(recs: list[dict], meta: dict) -> list[dict]:
                     "scroll": meta["scroll"],
                     "score": round(score, 4),
                     "regularity": round(regularity, 3),
-                    "thinness": round(thinness, 3),
+                    "sheet_ok": round(sheet_ok, 3),
                     "solidity": round(solidity, 3),
-                    "layered": round(layered, 3),
+                    "completeness": round(completeness, 3),
+                    "n_cross_expected": round(float(expected), 1),
                     "gap_cv": round(cv, 3),
                     "gap_mean_vox": round(gm, 2),
                     "gap_mean_um": round(gm * meta["vox_um"], 1),
@@ -298,6 +340,9 @@ def main() -> int:
     ap.add_argument("--z-step-mm", type=float, default=2.0)
     ap.add_argument("--band-mm", type=float, default=5.0)
     ap.add_argument("--r-min-mm", type=float, default=6.0)
+    ap.add_argument("--min-component-px", type=int, default=20,
+                    help="drop surface components smaller than this many pixels "
+                         "per slice (speckle in the thresholded prediction)")
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--out", type=Path, default=root / "scripts/windows.json")
     args = ap.parse_args()
@@ -315,6 +360,7 @@ def main() -> int:
         recs, meta = score_scroll(
             scroll, t["surface_zarr"], t["px_um"], args.level,
             args.n_angles, args.z_step_mm, args.band_mm, args.r_min_mm,
+            args.min_component_px,
         )
         wins = aggregate_windows(recs, meta)
         print(f"  {len(wins)} scored windows")
@@ -326,12 +372,12 @@ def main() -> int:
     print(f"\nwrote {args.out}  ({len(all_win)} windows, top 5000 kept)")
 
     print(f"\ntop {args.top} candidate 4 cm2 windows:")
-    hdr = (f"{'scroll':<11} {'score':>6} {'reg':>5} {'thin':>5} {'sol':>5} {'lay':>5} "
+    hdr = (f"{'scroll':<11} {'score':>6} {'reg':>5} {'sheet':>6} {'sol':>5} {'compl':>6} "
            f"{'pitch_um':>8} {'r_mm':>5} {'theta':>6} {'x_l0':>7} {'y_l0':>7} {'z_l0':>7}")
     print(hdr); print("-" * len(hdr))
     for w in all_win[:args.top]:
         print(f"{w['scroll']:<11} {w['score']:>6.3f} {w['regularity']:>5.2f} "
-              f"{w['thinness']:>5.2f} {w['solidity']:>5.2f} {w['layered']:>5.2f} "
+              f"{w['sheet_ok']:>6.2f} {w['solidity']:>5.2f} {w['completeness']:>6.2f} "
               f"{w['gap_mean_um']:>8.0f} {w['r_mm']:>5.1f} {w['theta_deg']:>6.1f} "
               f"{w['x_l0']:>7} {w['y_l0']:>7} {w['z_l0']:>7}")
 
