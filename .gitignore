@@ -25,3 +25,12 @@ private/
 out/
 ink/
 submissions/
+
+# --- campaign strategy and target selection: deliberately NOT public ---
+# Open-sourcing the tooling is a prize condition; publishing which patches we are
+# attacking is not, and First Letters only requires disclosure after winning.
+# These are all regenerable from the scripts in seconds.
+CLAUDE.md
+CLAUDE_*.md
+scripts/triage.json
+scripts/windows*.json
