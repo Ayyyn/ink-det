@@ -34,3 +34,7 @@ CLAUDE.md
 CLAUDE_*.md
 scripts/triage.json
 scripts/windows*.json
+
+# cached copy of the public data-browser index (re-pull, do not commit)
+scripts/index_live.json
+screenshots_for_claude/

@@ -399,25 +399,6 @@
     }
   },
   {
-    "scroll": "PHerc1447",
-    "volume": "20250521151220",
-    "px": 8.64,
-    "segments": 15,
-    "surface": true,
-    "lasagna": true,
-    "ink3d": false,
-    "score": 1.4,
-    "stages": {
-      "scanned": true,
-      "segmented": false,
-      "unrolled": false,
-      "ink": false,
-      "text": false,
-      "furthest": 0,
-      "unrolledPct": 0
-    }
-  },
-  {
     "scroll": "PHerc1545",
     "volume": "20250821151648",
     "px": 9.362,
