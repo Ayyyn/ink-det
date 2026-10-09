@@ -13,7 +13,8 @@ ROOT=${ROOT:-/data}
 PY=${PY:-$ROOT/venv/bin/python}
 S=${SWEEP_SCRIPTS:-$ROOT/pherc343/ink/scripts}
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-eval "$("$PY" "$HERE/render_info.py" "$Z" --sh)"
+INFO=$("$PY" "$HERE/render_info.py" "$Z" --sh) || { echo "cannot read render metadata: $Z" >&2; exit 1; }
+eval "$INFO"
 export N_LAYERS
 STAT=${4:-$D_MIN..$D_MAX}; WRITE=${5:--1 0 1}
 mkdir -p "$OUT"

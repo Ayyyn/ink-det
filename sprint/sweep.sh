@@ -24,7 +24,8 @@ export TMPDIR=${TMPDIR:-$ROOT/tmp}
 S=${SWEEP_SCRIPTS:-$ROOT/pherc343/ink/scripts}
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-eval "$("$PY" "$HERE/render_info.py" "$Z" --sh)"     # N_LAYERS PX_UM D_MIN D_MAX
+INFO=$("$PY" "$HERE/render_info.py" "$Z" --sh) || { echo "cannot read render metadata: $Z" >&2; exit 1; }
+eval "$INFO"   # N_LAYERS PX_UM D_MIN D_MAX
 DMIN=${3:-$D_MIN}; DMAX=${4:-$D_MAX}
 (( DMIN >= D_MIN && DMAX <= D_MAX )) || {
   echo "$N_LAYERS layers admit only d = $D_MIN..$D_MAX (asked $DMIN..$DMAX)"; exit 2; }
