@@ -64,6 +64,8 @@ def main(argv=None) -> int:
     ap.add_argument("--hec-par", type=int, default=2, help="concurrent hecate jobs")
     ap.add_argument("--gpus", default=None, help="comma-separated ids; default: all visible")
     ap.add_argument("--poll", type=int, default=60, help="heartbeat seconds")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print the plan and exit; checks the launch path without a GPU")
     ap.add_argument("--models", default=None,
                     help="space-separated model list. Default drops hecate: on the "
                          "PHerc0139 control the three villa models ensemble to AUC 0.979 "
@@ -101,20 +103,27 @@ def main(argv=None) -> int:
         print(f"single GPU{' ' + gpus[0] if gpus else ''}: one queue")
 
     total = len(models) * n_depths * 2      # both faces per job
+    if a.dry_run:
+        print(f"\nexpecting {total} maps ({len(models)} models x {n_depths} depths x 2 faces)")
+        for name, mods, gpu, vp, hp, dlo, dhi in plan:
+            print(f"  {name:7} GPU {gpu}  d {dlo}..{dhi}  villa_par {vp} hec_par {hp}  "
+                  f"models: {' '.join(mods)}")
+        return 0
+
     procs = []
-    for name, models, gpu, vp, hp in plan:
+    for name, mods, gpu, vp, hp, dlo, dhi in plan:
         env = dict(os.environ)
-        env["MODELS"] = " ".join(models)
+        env["MODELS"] = " ".join(mods)
         env["P_VILLA"], env["P_HEC"] = str(vp), str(hp)
         if gpu is not None:
             env["CUDA_VISIBLE_DEVICES"] = gpu
         log = open(out / "logs" / f"queue_{name}.log", "w")
-        p = subprocess.Popen(["bash", str(sweep), a.render, str(out), str(a.dmin), str(a.dmax)],
+        p = subprocess.Popen(["bash", str(sweep), a.render, str(out), str(dlo), str(dhi)],
                              env=env, stdout=log, stderr=subprocess.STDOUT)
         procs.append((name, p, log))
-        print(f"  started {name:7} pid {p.pid}  models: {' '.join(models)}")
+        print(f"  started {name:7} pid {p.pid}  d {dlo}..{dhi}  models: {' '.join(mods)}")
 
-    print(f"\nexpecting {total} maps ({len(VILLA) + len(HECATE)} models x {n_depths} depths x 2 faces)\n",
+    print(f"\nexpecting {total} maps ({len(models)} models x {n_depths} depths x 2 faces)\n",
           flush=True)
     t0 = time.time()
     try:
