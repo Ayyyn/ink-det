@@ -239,3 +239,9 @@ nb = {"cells": cells,
 with io.open("sprint/kaggle_sweep.ipynb", "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=1, ensure_ascii=False)
 print("wrote sprint/kaggle_sweep.ipynb with", len(cells), "cells")
+
+# never ship a notebook that has not been parsed: a syntax error or an undefined
+# shell interpolation only shows up minutes into a GPU session otherwise
+import subprocess
+import sys as _sys
+raise SystemExit(subprocess.run([_sys.executable, "sprint/_check_notebook.py"]).returncode)
