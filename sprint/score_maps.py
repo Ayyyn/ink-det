@@ -111,10 +111,21 @@ def main(argv=None) -> int:
     ap.add_argument("--json-out")
     ap.add_argument("--all-stacks", action="store_true",
                     help="also score each model separately, not just the ensemble")
+    ap.add_argument("--face", choices=("plain", "blind"), default="plain",
+                    help="which written stack is the READING side. Erwin's own renders: "
+                         "plain. Published team renders (PHerc0800, PHerc0139 w035): blind "
+                         "- their normals point the other way, so villa's forward pass, "
+                         "which ensemble_maps labels _blind, is the readable face.")
+    ap.add_argument("--rot180", action="store_true",
+                    help="undo the 180 deg rotation ensemble_maps applies when presenting a "
+                         "face, so the image lines up with the render grid and the labels")
     a = ap.parse_args(argv)
 
     base = os.path.join(a.images, a.name)
-    paths = {k: f"{base}__{k}__{a.depth}.png" for k in ("ensemble", "ensemble_blind", "ct")}
+    read_sfx, blind_sfx = ("_blind", "") if a.face == "blind" else ("", "_blind")
+    paths = {"ensemble": f"{base}__ensemble{read_sfx}__{a.depth}.png",
+             "ensemble_blind": f"{base}__ensemble{blind_sfx}__{a.depth}.png",
+             "ct": f"{base}__ct__{a.depth}.png"}
     missing = [k for k, p in paths.items() if not os.path.isfile(p)]
     if missing:
         print(f"missing: {[paths[k] for k in missing]}", file=sys.stderr)
@@ -122,13 +133,15 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 1
 
-    ens, bli, ct = (load_gray(paths[k]) for k in ("ensemble", "ensemble_blind", "ct"))
+    orient = (lambda x: x[::-1, ::-1]) if a.rot180 else (lambda x: x)
+    ens, bli, ct = (orient(load_gray(paths[k])) for k in ("ensemble", "ensemble_blind", "ct"))
     valid = (ens > 0) & (bli > 0) & (ct > 0)
 
     lo, hi = np.percentile(ens[valid], [1, 99.5])
     pk, pk_mm = row_periodicity(ens, valid, a.px_um)
     out = {
         "tag": a.tag or a.name, "name": a.name, "depth": a.depth, "px_um": a.px_um,
+        "face": a.face, "rot180": bool(a.rot180),
         "valid_px": int(valid.sum()),
         "valid_cm2": round(float(valid.sum()) * (a.px_um * 1e-4) ** 2, 3),
         "reading_vs_blind": round(pearson(ens, bli, valid), 3),
@@ -158,15 +171,15 @@ def main(argv=None) -> int:
         # slow model earns its runtime, and whether the ensemble beats its parts.
         rows = []
         for stack in ("ensemble", "dnative", "hecate", "ink9-42", "ink9-43"):
-            p_read = f"{base}__{stack}__{a.depth}.png"
-            p_blind = f"{base}__{stack}_blind__{a.depth}.png"
+            p_read = f"{base}__{stack}{read_sfx}__{a.depth}.png"
+            p_blind = f"{base}__{stack}{blind_sfx}__{a.depth}.png"
             if not os.path.isfile(p_read):
                 continue
-            r_img = load_gray(p_read)
+            r_img = orient(load_gray(p_read))
             v = valid & (r_img > 0)
             row = {"stack": stack}
             if os.path.isfile(p_blind):
-                b_img = load_gray(p_blind)
+                b_img = orient(load_gray(p_blind))
                 row["r_blind"] = round(pearson(r_img, b_img, v & (b_img > 0)), 3)
             pk2, mm2 = row_periodicity(r_img, v, a.px_um)
             row["periodicity"] = round(pk2, 3)

@@ -64,6 +64,11 @@ def main(argv=None) -> int:
     ap.add_argument("--hec-par", type=int, default=2, help="concurrent hecate jobs")
     ap.add_argument("--gpus", default=None, help="comma-separated ids; default: all visible")
     ap.add_argument("--poll", type=int, default=60, help="heartbeat seconds")
+    ap.add_argument("--models", default=None,
+                    help="space-separated model list. Default drops hecate: on the "
+                         "PHerc0139 control the three villa models ensemble to AUC 0.979 "
+                         "against 0.972 with hecate included, and hecate costs ~14x more "
+                         "per job. Pass all four for a final candidate image.")
     a = ap.parse_args(argv)
 
     here = Path(__file__).resolve().parent
@@ -77,15 +82,25 @@ def main(argv=None) -> int:
         gpus = [str(i) for i in range(gpu_count())]
     n_depths = a.dmax - a.dmin + 1
 
-    if len(gpus) >= 2:
-        plan = [("villa", VILLA, gpus[0], a.villa_par, 1),
-                ("hecate", HECATE, gpus[1], 1, a.hec_par)]
+    models = a.models.split() if a.models else list(VILLA)
+    has_hec = "hecate" in models
+    # plan entries: (label, models, gpu, villa_par, hec_par, dmin, dmax)
+    if len(gpus) >= 2 and has_hec and len(models) > 1:
+        # hecate is ~14x slower per job, so it gets a card to itself
+        plan = [("villa", [m for m in models if m != "hecate"], gpus[0], a.villa_par, 1, a.dmin, a.dmax),
+                ("hecate", ["hecate"], gpus[1], 1, a.hec_par, a.dmin, a.dmax)]
         print(f"2+ GPUs: villa models on GPU {gpus[0]}, hecate on GPU {gpus[1]}")
+    elif len(gpus) >= 2:
+        # comparable per-job cost, so split the depth range instead
+        mid = (a.dmin + a.dmax) // 2
+        plan = [("lower", models, gpus[0], a.villa_par, a.hec_par, a.dmin, mid),
+                ("upper", models, gpus[1], a.villa_par, a.hec_par, mid + 1, a.dmax)]
+        print(f"2+ GPUs: d {a.dmin}..{mid} on GPU {gpus[0]}, d {mid + 1}..{a.dmax} on GPU {gpus[1]}")
     else:
-        plan = [("all", VILLA + HECATE, gpus[0] if gpus else None, a.villa_par, a.hec_par)]
-        print(f"single GPU{' ' + gpus[0] if gpus else ''}: one queue with both model families")
+        plan = [("all", models, gpus[0] if gpus else None, a.villa_par, a.hec_par, a.dmin, a.dmax)]
+        print(f"single GPU{' ' + gpus[0] if gpus else ''}: one queue")
 
-    total = (len(VILLA) + len(HECATE)) * n_depths * 2      # both faces per job
+    total = len(models) * n_depths * 2      # both faces per job
     procs = []
     for name, models, gpu, vp, hp in plan:
         env = dict(os.environ)
