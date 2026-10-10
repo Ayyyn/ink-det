@@ -109,6 +109,8 @@ def main(argv=None) -> int:
     ap.add_argument("--labels", help="prefix of <p>__inklabels.npy / <p>__supervision.npy (control only)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--json-out")
+    ap.add_argument("--all-stacks", action="store_true",
+                    help="also score each model separately, not just the ensemble")
     a = ap.parse_args(argv)
 
     base = os.path.join(a.images, a.name)
@@ -151,10 +153,43 @@ def main(argv=None) -> int:
                    mean_on_ink=round(float(s[y].mean()), 1) if y.any() else None,
                    mean_off_ink=round(float(s[~y].mean()), 1) if (~y).any() else None)
 
+    if a.all_stacks:
+        # Which models actually carry the signal? On the control this says whether a
+        # slow model earns its runtime, and whether the ensemble beats its parts.
+        rows = []
+        for stack in ("ensemble", "dnative", "hecate", "ink9-42", "ink9-43"):
+            p_read = f"{base}__{stack}__{a.depth}.png"
+            p_blind = f"{base}__{stack}_blind__{a.depth}.png"
+            if not os.path.isfile(p_read):
+                continue
+            r_img = load_gray(p_read)
+            v = valid & (r_img > 0)
+            row = {"stack": stack}
+            if os.path.isfile(p_blind):
+                b_img = load_gray(p_blind)
+                row["r_blind"] = round(pearson(r_img, b_img, v & (b_img > 0)), 3)
+            pk2, mm2 = row_periodicity(r_img, v, a.px_um)
+            row["periodicity"] = round(pk2, 3)
+            row["period_mm"] = round(mm2, 1)
+            if a.labels:
+                mm = (np.load(a.labels + "__supervision.npy") > 0) & v
+                yy = np.load(a.labels + "__inklabels.npy")[mm] > 0
+                row["auc"] = round(roc_auc(r_img[mm], yy), 3)
+            rows.append(row)
+        if rows:
+            cols = [c for c in ("stack", "auc", "r_blind", "periodicity", "period_mm")
+                    if any(c in r for r in rows)]
+            w = {c: max(len(c), max(len(str(r.get(c, ""))) for r in rows)) for c in cols}
+            print(f"\n=== per stack at {a.depth} ===")
+            print("  " + "  ".join(c.ljust(w[c]) for c in cols))
+            for r in rows:
+                print("  " + "  ".join(str(r.get(c, "")).ljust(w[c]) for c in cols))
+            out["per_stack"] = rows
+
     width = max(len(k) for k in out)
     print(f"\n=== {out['tag']} ===")
     for k, v in out.items():
-        if k != "tag":
+        if k not in ("tag", "per_stack"):
             print(f"  {k:<{width}}  {v}")
 
     if a.json_out:
