@@ -50,8 +50,9 @@ an artefact.
 
 Free, starts now (16 GB is enough — the models tile):
 
-> Kaggle: upload `kaggle_ink_0800.ipynb`, set **GPU T4 x2** and **Internet On**
-> (needs a phone-verified account), **keep the notebook private**, run top to bottom.
+> Kaggle: `kaggle_sweep.ipynb`, **GPU T4 x2** and **Internet On** (needs a
+> phone-verified account), **private**, run top to bottom. Or drive it from a laptop
+> with `kaggle_sync.py` and never open the browser - see below.
 
 On a rented 24 GB box (Vast.ai / RunPod, Linux, ~$0.30-0.60/hr):
 
@@ -68,6 +69,36 @@ bash sprint/ensemble31.sh /data/renders/20251028222030.zarr \
 
 The sweep is resumable: existing maps are skipped, and depths run from `d = 0` outwards,
 so an interrupted run still holds the depths that matter most.
+
+### Driving Kaggle from here instead of retyping cells
+
+Every failure so far on Kaggle has been transport, not science: a shell command pasted
+into a Python cell, a backslash continuation the `!` magic silently ignores, a hand-edited
+cell drifting from the repo. `kaggle_sync.py` removes the retyping step. Put a token at
+`~/.kaggle/kaggle.json` (kaggle.com/settings -> API -> Create New Token), then:
+
+```bash
+python sprint/kaggle_sync.py push --what pherc0800 --seg 20251028222030 --dmin -7 --dmax 7
+python sprint/kaggle_sync.py status
+python sprint/kaggle_sync.py output          # /kaggle/working + the run log
+```
+
+It regenerates the notebook from `_make_notebook.py`, rewrites the config cell from the
+flags, re-runs `_check_notebook.py`, and pushes with `--accelerator NvidiaTeslaT4`.
+
+Three properties to keep in mind:
+
+- **A push is a run.** The API has no save-without-execute, so each push bills against the
+  weekly GPU quota. Use `--dry-run` to check the plan for free.
+- **The run is headless**, which suits a 40-minute sweep: it survives a closed laptop.
+  Nothing is visible until it ends, so evidence must be written to `/kaggle/working` -
+  which cell 10 of the notebook does.
+- **Fixes to `sprint/*.py` do not travel through the notebook.** It clones this repo from
+  GitHub, so a script fix reaches Kaggle by pushing to `origin`. Only notebook changes
+  need `kaggle_sync.py push`.
+
+`pull` fetches the copy that is live on Kaggle and says whether it differs from the repo,
+which is the check to run before a push overwrites browser edits.
 
 ## Target order
 
