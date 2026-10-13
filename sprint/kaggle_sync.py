@@ -57,20 +57,81 @@ def kaggle_cmd() -> list[str]:
     return [sys.executable, "-m", "kaggle"]
 
 
+KDIR = Path.home() / ".kaggle"
+TOKEN_FILES = (KDIR / "access_token", KDIR / "access_token.txt")
+
+AUTH_HELP = f"""no Kaggle credentials found. Two ways, either is fine:
+
+  1. OAuth, nothing to copy (recommended by the CLI itself):
+         python sprint/kaggle_sync.py auth --login
+  2. A token string from kaggle.com/settings -> API -> Create New Token.
+     Newer Kaggle shows the value to COPY instead of downloading kaggle.json:
+         python sprint/kaggle_sync.py auth --token <paste-it-here>
+     which writes {KDIR / 'access_token'} without the BOM Notepad would add."""
+
+
+def have_token() -> bool:
+    if os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY"):
+        return True
+    return (any(f.exists() and f.read_text(encoding="utf-8-sig").strip() for f in TOKEN_FILES)
+            or (KDIR / "credentials.json").exists()
+            or (KDIR / "kaggle.json").exists())
+
+
 def username(required: bool = True) -> str:
+    """Resolve the account name. A bare access_token carries no username, so ask the API."""
     u = os.environ.get("KAGGLE_USERNAME")
     if u:
         return u
-    for p in (Path.home() / ".kaggle" / "kaggle.json",
-              Path(os.environ.get("KAGGLE_CONFIG_DIR", "")) / "kaggle.json"):
+    for f, key in ((KDIR / "credentials.json", "username"), (KDIR / "kaggle.json", "username"),
+                   (KDIR / "sync_user.json", "username")):
         try:
-            return json.loads(p.read_text(encoding="utf-8"))["username"]
+            v = json.loads(f.read_text(encoding="utf-8-sig")).get(key)
+            if v:
+                return v
         except Exception:
             continue
+    if have_token():
+        # `kernels list --mine` returns refs shaped `username/slug`; cheapest whoami the
+        # CLI offers. Cached, because it costs a round trip.
+        r = subprocess.run(kaggle_cmd() + ["kernels", "list", "--mine", "--page-size", "1", "-v"],
+                           capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            if "/" in line and not line.lower().startswith("ref"):
+                name = line.split(",")[0].split("/")[0].strip()
+                if name:
+                    KDIR.mkdir(parents=True, exist_ok=True)
+                    (KDIR / "sync_user.json").write_text(
+                        json.dumps({"username": name}), encoding="utf-8")
+                    return name
     if not required:
         return "<your-kaggle-username>"
-    sys.exit("no Kaggle credentials. Get kaggle.json from kaggle.com/settings -> API -> "
-             f"Create New Token and save it to {Path.home() / '.kaggle' / 'kaggle.json'}")
+    sys.exit(AUTH_HELP + "\n\nOr pass it explicitly: --user <name>")
+
+
+def cmd_auth(a) -> int:
+    KDIR.mkdir(parents=True, exist_ok=True)
+    if a.login:
+        rc = run(kaggle_cmd() + ["auth", "login"]).returncode
+        if rc != 0:
+            return rc
+    elif a.token:
+        # utf-8 with no BOM and no trailing newline: the reader strips whitespace but a
+        # BOM becomes part of the bearer token and every call 401s with no clue why.
+        tok = a.token.strip().strip('"').strip("'")
+        (KDIR / "access_token").write_text(tok, encoding="utf-8")
+        for stale in (KDIR / "access_token.txt",):
+            if stale.exists():
+                stale.unlink()      # it would never be read, but it would confuse the next reader
+        print(f"wrote {KDIR / 'access_token'}  ({len(tok)} chars)")
+    elif not have_token():
+        print(AUTH_HELP)
+        return 1
+
+    (KDIR / "sync_user.json").unlink(missing_ok=True)
+    who = username()
+    print(f"authenticated as {who}")
+    return run(kaggle_cmd() + ["kernels", "quota"]).returncode
 
 
 # --- config injection ------------------------------------------------------------------
@@ -234,7 +295,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--slug", default=SLUG)
+    ap.add_argument("--user", help="Kaggle account name, if it cannot be resolved automatically")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("auth", help="store a token (or run the OAuth flow) and verify it")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--token", help="the value copied from kaggle.com/settings -> API")
+    g.add_argument("--login", action="store_true", help="browser OAuth; no token to copy")
+    p.set_defaults(fn=cmd_auth)
 
     p = sub.add_parser("push", help="regenerate, validate, commit and queue a run")
     p.add_argument("--what", choices=("control", "pherc0800"))
@@ -269,6 +337,8 @@ def main(argv=None) -> int:
     p.set_defaults(fn=cmd_quota)
 
     a = ap.parse_args(argv)
+    if a.user:
+        os.environ["KAGGLE_USERNAME"] = a.user
     return a.fn(a)
 
 

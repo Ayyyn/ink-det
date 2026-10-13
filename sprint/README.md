@@ -74,10 +74,13 @@ so an interrupted run still holds the depths that matter most.
 
 Every failure so far on Kaggle has been transport, not science: a shell command pasted
 into a Python cell, a backslash continuation the `!` magic silently ignores, a hand-edited
-cell drifting from the repo. `kaggle_sync.py` removes the retyping step. Put a token at
-`~/.kaggle/kaggle.json` (kaggle.com/settings -> API -> Create New Token), then:
+cell drifting from the repo. `kaggle_sync.py` removes the retyping step. Authenticate once -
+newer Kaggle shows a token *value* to copy rather than downloading `kaggle.json`, so pass
+it in rather than hunting for a file:
 
 ```bash
+python sprint/kaggle_sync.py auth --login            # browser OAuth, nothing to copy
+python sprint/kaggle_sync.py auth --token <value>    # or the copied string
 python sprint/kaggle_sync.py push --what pherc0800 --seg 20251028222030 --dmin -7 --dmax 7
 python sprint/kaggle_sync.py status
 python sprint/kaggle_sync.py output          # /kaggle/working + the run log
