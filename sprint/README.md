@@ -82,9 +82,16 @@ it in rather than hunting for a file:
 python sprint/kaggle_sync.py auth --login            # browser OAuth, nothing to copy
 python sprint/kaggle_sync.py auth --token <value>    # or the copied string
 python sprint/kaggle_sync.py push --what pherc0800 --seg 20251028222030 --dmin -7 --dmax 7
-python sprint/kaggle_sync.py status
-python sprint/kaggle_sync.py output          # /kaggle/working + the run log
+python sprint/kaggle_sync.py status --what pherc0800 --seg 20251028222030
+python sprint/kaggle_sync.py output --what pherc0800 --seg 20251028222030
 ```
+
+Notebooks are named after what they run - `vesuvius-ink-pherc0800-20251028222030`,
+`vesuvius-ink-pherc0139-w035-control` - so Kaggle's own version history becomes a
+readable record of attempts on that segment. The name is derived from the title rather
+than the metadata id, because Kaggle builds the served URL from the title: set them
+independently and the API addresses the notebook by one name while kaggle.com serves it
+at another, and `status` 404s on a job that is running fine.
 
 It regenerates the notebook from `_make_notebook.py`, rewrites the config cell from the
 flags, re-runs `_check_notebook.py`, and pushes with `--accelerator NvidiaTeslaT4`.
