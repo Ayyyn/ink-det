@@ -131,7 +131,7 @@ def cmd_auth(a) -> int:
     (KDIR / "sync_user.json").unlink(missing_ok=True)
     who = username()
     print(f"authenticated as {who}")
-    return run(kaggle_cmd() + ["kernels", "quota"]).returncode
+    return run(kaggle_cmd() + ["quota"]).returncode
 
 
 # --- config injection ------------------------------------------------------------------
@@ -288,7 +288,7 @@ def cmd_output(a) -> int:
 
 
 def cmd_quota(a) -> int:
-    return run(kaggle_cmd() + ["kernels", "quota"]).returncode
+    return run(kaggle_cmd() + ["quota"]).returncode
 
 
 def main(argv=None) -> int:
