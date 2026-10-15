@@ -39,8 +39,13 @@ WORK=${1:-$PWD/work}
 PY=${PY:-python}
 DRY=${DRY:-0}
 ONLY=${ONLY:-}
-Z0=${Z0:-}            # z band, level-0 voxels; empty = whole scroll (expensive)
+# The z band is REQUIRED, not an optimisation. PHerc0268 is 14833 x 12145 x 12145 at
+# level 0 = 2188 GB, and the m7 level 1 the SDT reads is 274 GB. Over a 1500-voxel band
+# (what the winning entry used) the SDT is ~28 GB. Without a band this fills any rentable
+# disk and the run dies hours in, having paid for it.
+Z0=${Z0:-}
 Z1=${Z1:-}
+BAND=${BAND:-1500}    # default band width if only Z0 is given
 STEPS=${STEPS:-30000}
 SENSE=${SENSE:-clockwise}
 for arg in "$@"; do
@@ -122,8 +127,15 @@ SDT=$WORK/surf_sdt.zarr
 if want sdt; then
   say "sdt: capped signed distance from the m7 surface prediction"
   if [ -d "$SDT" ]; then skip "$SDT"; else
-    ZR=""
-    [ -n "$Z0" ] && ZR="--z-range $Z0:$Z1"
+    if [ -z "$Z0" ]; then
+      echo "ERROR: set Z0 (and Z1, or BAND) before building the SDT." >&2
+      echo "  Whole-scroll level 1 for this scroll class is ~274 GB; a ${BAND}-voxel band is ~28 GB." >&2
+      echo "  e.g.  Z0=9500 Z1=11000 ...   (the winning entry's band on PHerc0343)" >&2
+      exit 2
+    fi
+    [ -n "$Z1" ] || Z1=$((Z0 + BAND))
+    ZR="--z-range $Z0:$Z1"
+    echo "   z band $Z0..$Z1 ($((Z1 - Z0)) level-0 voxels)"
     # level 1 at threshold 128, CT-masked with a 1-voxel dilation: the winning settings
     run "\"$PY\" \"\$(\"$PY\" -c \"import json;print(json.load(open('$MANIFEST',encoding='utf-8'))['tools']['make_surf_sdt.py'])\")\" \
         --surf \"$SURF\" --group 1 --threshold 128 --out \"$SDT\" \
