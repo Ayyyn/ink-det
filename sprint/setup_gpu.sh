@@ -23,7 +23,17 @@ echo "== apt"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends curl ca-certificates git build-essential cmake ninja-build \
-    pkg-config libgomp1 zstd jq python3 libgl1 libglib2.0-0
+    pkg-config libgomp1 zstd jq python3 libgl1 libglib2.0-0 unzip
+
+echo "== aws cli"
+# The chain's dataset phase pulls the lasagna group with `aws s3 sync --no-sign-request`.
+# Ubuntu's awscli package is v1 and drags in a second Python; take v2's static bundle.
+command -v aws >/dev/null || {
+    curl -LsS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+    unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --update >/dev/null
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+}
+aws --version
 
 echo "== uv + python 3.14 (vesuvius pins >=3.14,<3.15)"
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
