@@ -60,20 +60,59 @@ def get_json(cli, key: str):
     return json.loads(cli.get_object(Bucket=BUCKET, Key=key)["Body"].read())
 
 
-def eligible_volume(scroll: str, repo: Path) -> str | None:
-    p = repo / "villa" / "scrollprize.org" / "src" / "data" / "prizeEligibility.json"
-    if not p.exists():
-        return None
-    d = json.loads(p.read_text(encoding="utf-8"))
+ELIGIBILITY_PATH = "scrollprize.org/src/data/prizeEligibility.json"
+ELIGIBILITY_URL = f"https://raw.githubusercontent.com/ScrollPrize/villa/main/{ELIGIBILITY_PATH}"
+
+
+def eligible_volume(scroll: str, repo: Path, explicit: str | None = None) -> tuple[str | None, str]:
+    """Return (volume id, where it came from) for the CURRENT First Letters list.
+
+    **Never read this from the pinned villa checkout.** setup_gpu.sh pins villa to
+    0fb38c45 (2026-08-18) so the winning run reproduces bit for bit, but the
+    `first-letters-2027` list was created 2026-09-10 - three weeks after the pin - and the
+    file does not exist in that tree at all. Reading it from the pin yields no eligible
+    volume, which then makes every asset lookup that filters on the volume id report
+    MISSING even though the asset is published. That failure looks like absent data and is
+    really a stale checkout, so prefer an explicit path, then a *current* local clone, then
+    the live file.
+    """
+    tried: list[str] = []
+    for cand in ([Path(explicit)] if explicit else []) + [repo / "villa" / ELIGIBILITY_PATH]:
+        tried.append(str(cand))
+        if cand.exists():
+            d = json.loads(cand.read_text(encoding="utf-8"))
+            if "first-letters-2027" in d:
+                return _pick(d, scroll), str(cand)
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(ELIGIBILITY_URL, timeout=20) as r:
+            return _pick(json.loads(r.read().decode("utf-8")), scroll), ELIGIBILITY_URL
+    except Exception as e:
+        print(f"  (could not fetch the live eligibility list: {type(e).__name__}: {e})")
+        print(f"   looked in: {', '.join(tried)}")
+        return None, "not found"
+
+
+def _pick(d: dict, scroll: str) -> str | None:
     for e in d.get("first-letters-2027", []):
         if e.get("scroll") == scroll:
             return e.get("volume")
     return None
 
 
-def find_tool(villa: Path, name: str) -> str | None:
-    hits = sorted(villa.rglob(name))
-    return str(hits[0]) if hits else None
+def find_tool(roots: list[Path], name: str) -> str | None:
+    """Search every root, not just villa.
+
+    snap_meshes.py is the winning entry's OWN contribution and lives in its repo
+    (cloned to $ROOT/pherc343 by setup_gpu.sh), not anywhere in villa.
+    """
+    for root in roots:
+        if root.is_dir():
+            hits = sorted(root.rglob(name))
+            if hits:
+                return str(hits[0])
+    return None
 
 
 def main(argv=None) -> int:
@@ -83,6 +122,10 @@ def main(argv=None) -> int:
     ap.add_argument("--vc3d", default=os.environ.get("VC3D", ""), help="VC3D AppImage (for the render)")
     ap.add_argument("--json", dest="json_out")
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent))
+    ap.add_argument("--eligibility", default=os.environ.get("ELIGIBILITY", ""),
+                    help="prizeEligibility.json; default is a current clone, else the live file")
+    ap.add_argument("--also", action="append", default=[],
+                    help="extra tool root; $ROOT/pherc343 is added automatically")
     a = ap.parse_args(argv)
 
     repo = Path(a.repo)
@@ -91,10 +134,13 @@ def main(argv=None) -> int:
     cli = s3()
 
     # --- the eligible volume -------------------------------------------------------
-    want = eligible_volume(a.scroll, repo)
-    out["eligible_volume"] = want
     print(f"=== {a.scroll}")
-    print(f"  eligible volume      {want or 'UNKNOWN (prizeEligibility.json not found)'}")
+    want, src = eligible_volume(a.scroll, repo, a.eligibility or None)
+    out["eligible_volume"], out["eligibility_source"] = want, src
+    print(f"  eligible volume      {want or 'UNKNOWN'}   [{src}]")
+    if not want:
+        problems.append("no eligible volume resolved - every asset check below is unfiltered "
+                        "and a MISSING here may be wrong; supply --eligibility")
 
     vols = ls_dirs(cli, f"{a.scroll}/volumes/")
     vol = next((v for v in vols if want and want in v), None)
@@ -155,9 +201,10 @@ def main(argv=None) -> int:
         if not villa.is_dir():
             problems.append(f"villa checkout not found: {villa}")
         else:
+            roots = [villa] + [Path(x) for x in a.also] + [villa.parent / "pherc343"]
             found = {}
             for name, why in TOOLS.items():
-                p = find_tool(villa, name)
+                p = find_tool(roots, name)
                 found[name] = p
                 print(f"  {name:20} {p or 'NOT FOUND'}")
                 if not p:

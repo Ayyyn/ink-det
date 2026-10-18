@@ -75,7 +75,7 @@ if [[ ! -x $ROOT/venv/bin/python ]]; then
   cd "$ROOT/villa/lasagna"
   python3 scripts/bootstrap_venv.py --venv "$ROOT/venv" --backend "$TORCH_BACKEND"
 fi
-uv pip install --python "$ROOT/venv/bin/python" -q tifffile zarr numpy numcodecs opencv-python-headless safetensors s3fs boto3
+uv pip install --python "$ROOT/venv/bin/python" -q tifffile zarr numpy numcodecs opencv-python-headless safetensors s3fs boto3 kornia
 "$ROOT/venv/bin/python" -c "import vesuvius.ink_detection.inference.infer as m, cv2, zarr, torch; \
 print('vesuvius', m.__file__); print('torch', torch.__version__, 'cuda', torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 
