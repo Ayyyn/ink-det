@@ -26,12 +26,25 @@
 # Run `--dry-run` first. It prints every command with its real resolved paths and touches
 # nothing, which is how you find a wrong path for free instead of 40 minutes into a rental.
 #
-# WHAT IS NOT VERIFIED HERE, AND WHY: the fit and flatten invocations are written from the
-# winning entry's own README and from a *different* villa commit than the pinned one, as
-# the local clone is not 0fb38c45. `preflight` locates each tool in the actual checkout and
-# fails if one is missing, but the exact flag spellings of fit_spiral at 0fb38c45 must be
-# confirmed on the box with --help before the first paid run. Treat the fit phase as the
-# one step that may need a correction; everything around it is checked.
+# VERIFIED ON THE BOX 2026-10-18, against villa 0fb38c45 itself:
+#
+#   * fit_spiral.py takes only --dataset, --scroll-spec and --cache. Every parameter of the
+#     winning run arrives through the dataset layout, spiral-scroll.json, or the env var
+#     FIT_SPIRAL_CONFIG_OVERRIDES (JSON). Unknown override keys raise KeyError, so
+#     lasagna_scale and the spiral sense must NOT be put there - they are scroll-spec keys.
+#   * The conventional layout is FIT_INPUT_CATALOG in fit_session.py. With
+#     dense_spacing_mode "phase" and the shell weights at 0, the required inputs are
+#     umbilicus.json, lasagna_inputs/las_008_n{x,y}.ome.zarr and
+#     lasagna_inputs/las_008_surf_sdt.ome.zarr. grad_mag is needed only for
+#     dense_spacing_mode "grad_mag", so it is not synced.
+#   * tracks/ and outer_shell/ are OPTIONAL (required=_never and _shell_losses_enabled).
+#     PHerc0268 and PHerc1218 publish neither, and with the shell weights at 0 neither is
+#     needed - this was the biggest feared gap versus the winning run and it is not one.
+#   * verified_patches/ is resolve_required=True, which is checked REGARDLESS of config, so
+#     it must exist as a directory even with patches disabled. An empty one satisfies it.
+#
+# Still unverified: the spiral sense for this scroll (the winning run used CW on PHerc0343;
+# sense is a property of the scroll, not of the method) and the flatten/render invocations.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=${1:-$PWD/work}
@@ -47,7 +60,11 @@ Z0=${Z0:-}
 Z1=${Z1:-}
 BAND=${BAND:-1500}    # default band width if only Z0 is given
 STEPS=${STEPS:-30000}
-SENSE=${SENSE:-clockwise}
+# spiral-scroll.json accepts only CW or ACW, and parse_scroll_spec rejects anything else.
+# CW is what the winning run used on PHerc0343; whether PHerc0268 winds the same way is a
+# property of this scroll and is NOT established - if the fit will not converge, try ACW.
+SENSE=${SENSE:-CW}
+VOXEL=${VOXEL:-8.64}  # um; the eligible 8.64 um tier. Read it off the volume name.
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY=1 ;;
@@ -102,12 +119,33 @@ if want dataset; then
   say "dataset: the conventional fit_spiral layout"
   # fit_spiral takes --dataset, not loose paths, and resolves inputs by fixed relative
   # names (fit_session.py: _CONVENTIONAL_INPUT_RELATIVES). Build exactly that tree.
-  run "mkdir -p \"$DS/lasagna_inputs\""
+  # verified_patches is resolve_required in FIT_INPUT_CATALOG, and resolve_dataset_root
+  # checks that flag without consulting the config - so it must exist as a directory even
+  # though input_disable_patches turns patches off. Empty is enough.
+  run "mkdir -p \"$DS/lasagna_inputs\" \"$DS/verified_patches\""
   run "cp \"$UMB\" \"$DS/umbilicus.json\""
+  # The scroll specification. fit_spiral refuses to resolve a dataset without it, and it
+  # carries the facts that are NOT config: the sense, the voxel size, and which zarr group
+  # to read at which lasagna_scale. Unknown keys are a hard error, so keep to the schema.
+  cat > "$WORK/spiral-scroll.json" <<JSON
+{
+  "schema_version": 1,
+  "name": "$SCROLL",
+  "voxel_size_um": $VOXEL,
+  "spiral_outward_sense": "$SENSE",
+  "umbilicus": {"coordinate_scale": 1.0},
+  "normal_zarr_group": "$LAS_GROUP",
+  "surf_sdt_zarr_group": "1",
+  "lasagna_scale": $LAS_SCALE
+}
+JSON
+  run "cp \"$WORK/spiral-scroll.json\" \"$DS/spiral-scroll.json\""
   # These must be LOCAL paths: fit_spiral opens them as plain stores, and an s3:// string
   # cannot be symlinked. Syncing a prediction is fine - the "never download a volume" rule
   # is about the multi-TB CT, not these. Expect tens of GB; check the size before pulling.
-  for c in nx ny grad_mag; do
+  # nx and ny only. grad_mag is required solely for dense_spacing_mode "grad_mag"
+  # (_grad_mag_required); we run "phase", so syncing it would cost tens of GB for nothing.
+  for c in nx ny; do
     D="$DS/lasagna_inputs/las_008_${c}.ome.zarr"
     if [ -d "$D" ]; then skip "$D"; else
       run "aws s3 sync --no-sign-request \"$LAS${SCROLL}_${c}.ome.zarr/$LAS_GROUP/\" \"$D/$LAS_GROUP/\""
@@ -119,11 +157,13 @@ if want dataset; then
   # Erwin ran with spiral tracks; neither PHerc0268 nor PHerc1218 publishes any, and their
   # patch makes the outer shell optional, so the fit runs without both. Expect a weaker fit
   # than the winning one had - this is the single biggest known difference from that run.
-  echo "   note: no tracks/ and no outer_shell/ - both optional, both absent for this scroll"
+  echo "   no tracks/ and no outer_shell/ - verified optional for this config, not a gap"
 fi
 
 # ---------------------------------------------------------------- SDT
-SDT=$WORK/surf_sdt.zarr
+# Must land at the conventional name inside the dataset: fit_spiral resolves it as the
+# "surf_sdt" input, which dense_spacing_mode "phase" makes required.
+SDT=$DS/lasagna_inputs/las_008_surf_sdt.ome.zarr
 if want sdt; then
   say "sdt: capped signed distance from the m7 surface prediction"
   if [ -d "$SDT" ]; then skip "$SDT"; else
@@ -147,24 +187,16 @@ fi
 FIT=$WORK/fit
 if want fit; then
   say "fit: spiral, $STEPS steps, sense $SENSE, patches disabled"
-  cat > "$WORK/fit_overrides.json" <<JSON
-{
-  "input_disable_patches": true,
-  "loss_weight_shell_outer": 0,
-  "loss_weight_shell_patch_radius": 0,
-  "dense_spacing_mode": "phase",
-  "optimizer_num_training_steps": $STEPS,
-  "lasagna_scale": $LAS_SCALE,
-  "sense": "$SENSE"${Z0:+,
-  "z_begin": $Z0,
-  "z_end": $Z1}
-}
-JSON
-  echo "   overrides -> $WORK/fit_overrides.json"
-  run "cat \"$WORK/fit_overrides.json\""
-  echo "   CONFIRM FLAG SPELLINGS FIRST:  \$PY \$(fit_spiral.py) --help"
-  echo "   fit_spiral reads config overrides from the environment (get_env_config_overrides)."
-  run "FIT_SPIRAL_CONFIG=\"$WORK/fit_overrides.json\" \"$PY\" \"\$(\"$PY\" -c \"import json;print(json.load(open('$MANIFEST',encoding='utf-8'))['tools']['fit_spiral.py'])\")\" --dataset \"$DS\""
+  # The winning entry's overrides, verbatim from its mesh/README.md. These go in the
+  # environment as JSON (get_env_config_overrides reads FIT_SPIRAL_CONFIG_OVERRIDES), and
+  # the key list is VALIDATED - an unknown key raises KeyError and the run dies at once.
+  # So lasagna_scale and the sense are deliberately absent: both belong to
+  # spiral-scroll.json, written in the dataset phase, not here.
+  OV=$(printf '{"z_begin": %s, "z_end": %s, "input_disable_patches": true, %s}' \
+       "$Z0" "$Z1" \
+       '"loss_weight_shell_outer": 0, "loss_weight_shell_patch_radius": 0, "dense_spacing_mode": "phase", "optimizer_num_training_steps": '"$STEPS")
+  echo "   FIT_SPIRAL_CONFIG_OVERRIDES=$OV"
+  run "FIT_SPIRAL_CONFIG_OVERRIDES='$OV' \"$PY\" \"\$(\"$PY\" -c \"import json;print(json.load(open('$MANIFEST',encoding='utf-8'))['tools']['fit_spiral.py'])\")\" --dataset \"$DS\""
 fi
 
 # ---------------------------------------------------------------- snap
