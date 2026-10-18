@@ -17,6 +17,13 @@ SCROLL=${SCROLL:-PHerc0268}
 HERE=$(cd "$(dirname "$0")" && pwd)
 PY=$ROOT/venv/bin/python
 
+# Keep every cache on local disk. setup_gpu.sh explains why (the rented box points these
+# at a FUSE volume that refuses chmod); repeated here because the steps below run in this
+# shell, not setup_gpu.sh's, and would otherwise inherit the box's own values.
+export UV_CACHE_DIR="$ROOT/cache/uv" PIP_CACHE_DIR="$ROOT/cache/pip" \
+       HF_HOME="$ROOT/cache/hf" VIRTUALENV_OVERRIDE_APP_DATA="$ROOT/cache/virtualenv" \
+       XDG_CACHE_HOME="$ROOT/cache"
+
 step() { printf '\n\033[1m=== %s\033[0m\n' "$*"; }
 
 step "0. the box"

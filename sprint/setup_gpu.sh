@@ -19,6 +19,26 @@ TORCH_BACKEND=${TORCH_BACKEND:-cu130}
 echo "== GPU"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || { echo "no NVIDIA GPU visible"; exit 1; }
 
+echo "== caches"
+# Rented boxes helpfully point every cache at their persistent volume - RunPod exports
+# UV_CACHE_DIR, PIP_CACHE_DIR, HF_HOME and VIRTUALENV_OVERRIDE_APP_DATA into /workspace.
+# That volume is a FUSE mount (fuse.geese) which refuses chmod, so extracting any wheel
+# carrying a compiled .so dies with "failed to set permissions ... Operation not
+# permitted", and the same would hit the checkpoint downloads later. Keep every cache on
+# the local disk; it is also far faster, and nothing here is worth persisting.
+export UV_CACHE_DIR="$ROOT/cache/uv"
+export PIP_CACHE_DIR="$ROOT/cache/pip"
+export HF_HOME="$ROOT/cache/hf"
+export VIRTUALENV_OVERRIDE_APP_DATA="$ROOT/cache/virtualenv"
+export XDG_CACHE_HOME="$ROOT/cache"
+mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$HF_HOME" "$VIRTUALENV_OVERRIDE_APP_DATA"
+# Prove the filesystem actually permits chmod rather than discovering it mid-install.
+probe=$ROOT/cache/.chmod_probe
+touch "$probe" && chmod 755 "$probe" 2>/dev/null || {
+    echo "$ROOT cannot chmod - pick a ROOT on local disk, not a network volume"; exit 1; }
+rm -f "$probe"
+echo "caches under $ROOT/cache (chmod verified)"
+
 echo "== apt"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
