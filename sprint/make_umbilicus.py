@@ -130,6 +130,12 @@ def main(argv=None) -> int:
                     help="keep voxels above this grad_mag percentile; these are the sheets")
     ap.add_argument("--min-samples", type=int, default=500)
     ap.add_argument("--max-slabs", type=int, default=0, help="0 = all; smaller is a quick look")
+    ap.add_argument("--z0", type=int, default=None,
+                    help="restrict to this z range, in LEVEL-0 voxels. Survey the whole "
+                         "scroll at a coarse group to choose a band, then refine over just "
+                         "that band at a fine group - the fine group over the whole scroll "
+                         "is tens of GB of normals for z you will never fit.")
+    ap.add_argument("--z1", type=int, default=None)
     a = ap.parse_args(argv)
 
     base = a.lasagna.rstrip("/")
@@ -150,6 +156,16 @@ def main(argv=None) -> int:
     cz = int(getattr(nxa, "chunks", (32,))[0]) or 32
     block = max(cz, int(round(a.step / scale / cz)) * cz) if a.step else cz
     starts = list(range(0, nz, block))
+    if a.z0 is not None or a.z1 is not None:
+        # The band is given in level-0 voxels; these stores are indexed in group pixels.
+        g0 = int((a.z0 or 0) / scale)
+        g1 = int((a.z1 if a.z1 is not None else nz * scale) / scale)
+        starts = [z for z in starts if z + block > g0 and z < g1]
+        if not starts:
+            sys.exit(f"z range {a.z0}..{a.z1} is empty at group {group} "
+                     f"(store is {nz} slices x scale {scale:g} = {nz * scale:.0f} level-0)")
+        print(f"  restricted to z {a.z0}..{a.z1} level-0 = group slices "
+              f"{starts[0]}..{min(starts[-1] + block, nz)}", flush=True)
     if a.max_slabs:
         starts = starts[:a.max_slabs]
     print(f"  {len(starts)} blocks of {block} slices "
