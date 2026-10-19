@@ -26,6 +26,18 @@ export UV_CACHE_DIR="$ROOT/cache/uv" PIP_CACHE_DIR="$ROOT/cache/pip" \
 
 step() { printf '\n\033[1m=== %s\033[0m\n' "$*"; }
 
+step "0a. idle guard (start this BEFORE anything else)"
+# A rented pod bills wall-clock time, not GPU time. An idle pod costs the same as a busy
+# one, and this project has already burned a full set of credits on a box left up after
+# its last job finished. Start the guard first so that can only happen once.
+if tmux has-session -t guard 2>/dev/null; then
+  echo "guard already running"
+else
+  tmux new-session -d -s guard "bash '$HERE/idle_guard.sh' ${IDLE_MIN:-20}" \
+    && echo "guard started: pod stops after ${IDLE_MIN:-20} idle minutes" \
+    || echo "*** could not start the guard - stop the pod yourself when the last job ends"
+fi
+
 step "0. the box"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 echo "cores: $(nproc)   ram: $(free -g | awk '/^Mem:/{print $2}') GB   disk: $(df -h "$ROOT" | awk 'NR==2{print $4}') free"
